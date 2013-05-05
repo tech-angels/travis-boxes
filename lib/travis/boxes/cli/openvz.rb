@@ -80,34 +80,49 @@ module Travis
           end
 
           def add_box
+            # Install template
             begin
-              File.delete(File.join('/var/lib/vz/template/cache', base_box_name.to_s + '.tar.gz') 
+              system('sudo rm -f ' + File.join('/var/lib/vz/template/cache', base_box_name.to_s + '.tar.gz'))
             rescue ::Errno::ENOENT => e
             end
-            FileUtils.cp(base_name_and_path, File.join('/var/lib/vz/template/cache', base_box_name.to_s + '.tar.gz')
+            dest = File.join('/var/lib/vz/template/cache', base_box_name.to_s + '.tar.gz')
+            system("sudo cp -f #{base_name_and_path} #{dest}") || raise("Could not install template #{base_name_and_path} into {dest}")
+            # Create box
+            system("sudo vzctl create #{freeveid} --ostemplate #{base_box_name}") || raise("Could not create box #{base_box_name}")
+          end
+
+          def running?
+            system("sudo vzlist -N #{base_box_name}")
           end
 
           def up
-            halt
-            system('sudo vzctl start ' + base_box_name)
+            halt if running?
+            system('sudo vzctl start ' + base_box_name) || raise("Could not bring box " + base_box_name + " up")
             # TODO: run chef for provisioning
           end
 
           def halt
-            system('sudo vzctl stop ' + base_box_name)
+            system('sudo vzctl stop ' + base_box_name) || raise("Could not halt box " + base_box_name)
           end
 
           def package_box
             halt
-            system('sudo vzctl dump ' + base_box_name)
-            FileUtils.mkdir_p(File.dirname(target))
-            FileUtils.mv('/var/lib/vz/dump/Dump.' + veid, target)
+            system('sudo vzctl dump ' + base_box_name) || raise("Could not dump box #{base_box_name} to package it")
+            tmpdir = File.dirname(target)
+            system('sudo mkdir -p ' + tmpdir) || raise("Could not create #{tmpdir}")
+            dump = '/var/lib/vz/dump/Dump.' + veid
+            system('sudo mv #{dump} #{target}') || raise("Could not move Dump #{dump} to #{target}")
           end
 
           def veid
             result = `sudo vzlist -aH log-1 -oveid`.strip
             raise("could not find #{base_box_name} veid in #{meta.inspect}") unless result =~ /\A[0-9]+\Z/
             result
+          end
+
+          def freeveid
+            # Return max veid + 1
+            (`sudo vzlist -aHoveid`.split.sort.last || 1000).to_i + 1
           end
 
           def base_box_name
