@@ -1,6 +1,7 @@
 require 'archive/tar/minitar'
 require 'json'
 require 'travis/boxes'
+require 'ipaddr'
 
 module Travis
   module Boxes
@@ -88,7 +89,14 @@ module Travis
             dest = File.join('/var/lib/vz/template/cache', base_box_name.to_s + '.tar.gz')
             system("sudo cp -f #{base_name_and_path} #{dest}") || raise("Could not install template #{base_name_and_path} into {dest}")
             # Create box
-            system("sudo vzctl create #{freeveid} --ostemplate #{base_box_name}") || raise("Could not create box #{base_box_name}")
+            newveid = freeveid
+            system("sudo vzctl create #{newveid} --ostemplate #{base_box_name}") || raise("Could not create box #{base_box_name}")
+            # Set box name
+            system("sudo vzctl set #{newveid} --name #{base_box_name} --save") || raise("Could not set name for box #{base_box_name}")
+            # Add an interface
+            system("sudo vzctl set #{newveid} --netif_del all --netif_add eth0,,,,br0 --save") || raise("Could not add interface to box #{base_box_name}")
+            # Set nameserver
+            system("sudo vzctl set #{newveid} --nameserver 8.8.8.8 --save") || raise("Could not configure nameserver on #{base_box_name}")
           end
 
           def running?
@@ -107,16 +115,17 @@ module Travis
 
           def package_box
             halt
-            system('sudo vzctl dump ' + base_box_name) || raise("Could not dump box #{base_box_name} to package it")
-            tmpdir = File.dirname(target)
-            system('sudo mkdir -p ' + tmpdir) || raise("Could not create #{tmpdir}")
-            dump = '/var/lib/vz/dump/Dump.' + veid
-            system('sudo mv #{dump} #{target}') || raise("Could not move Dump #{dump} to #{target}")
+            output = `sudo vzdump #{veid}`
+            output = output.split("\n").select{|l| l.match(/^INFO: creating archive '.*'$/)}.first
+            raise("Could not dump box #{base_box_name} to package it") if output.nil?
+            archive = output.split("\n").select{|l| l.match(/^INFO: creating archive '.*'$/)}.first.sub(/^INFO: creating archive '(.*)'$/, '\1')
+            raise("Could not dump box #{base_box_name} to package it") if archive.nil?
+            system("sudo mv #{archive} #{target}") || raise("Could not move Dump #{archive} to #{target}")
           end
 
           def veid
-            result = `sudo vzlist -aH log-1 -oveid`.strip
-            raise("could not find #{base_box_name} veid in #{meta.inspect}") unless result =~ /\A[0-9]+\Z/
+            result = `sudo vzlist -aH #{base_box_name} -oveid`.strip
+            raise("could not find #{base_box_name} veid") unless result =~ /\A[0-9]+\Z/
             result
           end
 
@@ -136,7 +145,8 @@ module Travis
           def timestamp
             Time.now.strftime('%Y-%m-%d-%H%M')
           end
-      end
+
+     end
     end
   end
 end
