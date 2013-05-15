@@ -1,10 +1,10 @@
 source :rubygems
 
-gem 'thor',           '~> 0.14.6'
+gem 'thor',           '~> 0.15.0'
 
 gem 'vagrant',        '~> 1.0.2'
 gem 'vagrant-vbguest'
-gem 'veewee',         :git => "git://github.com/jedi4ever/veewee.git"
+gem 'veewee',         :git => "git://github.com/tech-angels/veewee.git", :branch => 'openvz_support'
 
 gem 'jruby-openssl', :platform => :jruby
 
